@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.ConcurrentModificationException;
 import java.util.List;
 import java.util.Random;
+import java.util.Scanner;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -31,6 +32,7 @@ import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JProgressBar;
@@ -40,6 +42,7 @@ import javax.swing.SwingWorker;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 
+import org.apache.http.HttpEntity;
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -49,6 +52,7 @@ import org.apache.http.cookie.Cookie;
 import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 
 
 public class WatcherApp extends JFrame implements ActionListener, PropertyChangeListener {
@@ -86,9 +90,10 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 	}
 	
 	WatcherApp() {
-
+		PoolingHttpClientConnectionManager cm = new PoolingHttpClientConnectionManager();
         httpClient = HttpClients.custom()
                 .setDefaultCookieStore(cookieStore)
+                .setConnectionManager(cm)
                 .build();
         
 
@@ -202,14 +207,12 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 				names.reset();
 			}
 
-			/*
 			if (!checkLogin()) {
 				if (!doLogin()) {
 					JOptionPane.showMessageDialog(this, "Couldn't login :<");
 					return;
 				}
 			}
-			*/
             
             //ok we maybe logged in now
 			HALT = false;
@@ -259,15 +262,15 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 			int totalNames = names.getTotal();
 			while (names.getProgress() < totalNames && !HALT) {
 				String next = names.getNext();
-				//watchUser(next);
+				boolean result = watchUser(next);
 				if (myIndex == -1) {
 					for (myIndex = 0; myIndex < workerlist.size(); myIndex++) {
 						if (workerlist.get(myIndex) == this)
 							break;
 					}
 				}
-				bubblelist.add(new WatchBubble(next, myIndex));
-				Thread.sleep(rand.nextInt(400) + 300);
+				bubblelist.add(new WatchBubble(next, myIndex, result));
+				//Thread.sleep(rand.nextInt(400) + 300); //pretend network delay
 				offset = 700;
 				this.firePropertyChange("progress", 0, names.getProgress());
 			}
@@ -339,17 +342,58 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 		return aFound && bFound;
 	}
 
-	private void watchUser(String n) {
+	/*
+	 * it looks like these HTTP Gets are blocking - 
+	 * but maybe it's just a limit on how fast FA can
+	 * serve us. Maybe someone smarter than me
+	 * knows what I'm doing wrong.
+	 */
+	private boolean watchUser(String n) {
 		HttpGet g = new HttpGet("http://www.furaffinity.net/user/" + n);
+		boolean couldWatch = false;
 		try {
 			CloseableHttpResponse rsp = httpClient.execute(g);
-			System.out.println(n + " ~ " + rsp.getStatusLine());
+			HttpEntity e = rsp.getEntity();
+			Scanner sc = new Scanner(e.getContent());
+			while (sc.hasNext()) {
+				String next = sc.nextLine();
+				if (next.contains("/watch/")) {
+					sc.close();
+					rsp.close(); //this is fuckin with my threads
+					String begin = next.substring(next.indexOf("/watch"));
+					String path = begin.substring(0, begin.indexOf("\""));
+					HttpGet watchlink = new HttpGet("http://www.furaffinity.net" + path);
+					//HttpGet watchlink = new HttpGet("http://www.example.com");
+					System.out.println(watchlink.getURI());
+					try {
+						CloseableHttpResponse rs2 = httpClient.execute(watchlink);
+						Scanner sc2 = new Scanner(rs2.getEntity().getContent());
+						while (sc2.hasNext()) {
+							if (sc2.nextLine().contains("has been added")) {
+								couldWatch = true;
+								break;
+							}
+						}
+						sc2.close();
+						rs2.close(); //rip runescape 2 2013
+					} catch (IOException e2) {
+						
+					}
+					break;
+				} else if (next.contains("/unwatch/")) {
+					
+					couldWatch = false;
+					break;
+				}
+			}
+			sc.close();
 			rsp.close();
 		} catch (ClientProtocolException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+		return couldWatch;
 	}
 	
 	/**
@@ -557,11 +601,13 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 		String user;
 		int w = -1;
 		int h = -1;
+		boolean success;
 		
-		WatchBubble(String name, int pos) {
+		WatchBubble(String name, int pos, boolean result) {
 			user = name;
 			offset = 5000;
 			position = pos;
+			success = result;
 		}
 		
 		public void draw(Graphics2D g, long timediff) {
@@ -580,7 +626,11 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 			int y = 170 + offset/100;
 			g.setColor(Color.white);
 			g.fillRoundRect(x-4, y+4, w+8, h+8, 4, 4);
-			g.setColor(Color.black);
+			if (success) {
+				g.setColor(Color.decode("0x007F0E")); //it's green
+			} else {
+				g.setColor(Color.red);
+			}
 			g.drawString(user, x, y+h+4);
 		}
 	}
