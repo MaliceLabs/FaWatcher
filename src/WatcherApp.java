@@ -287,18 +287,22 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 		protected Void doInBackground() throws Exception {
 			int totalNames = names.getTotal();
 			while (names.getProgress() < totalNames && !HALT) {
-				String next = names.getNext();
-				boolean result = watchUser(next);
-				if (myIndex == -1) {
-					for (myIndex = 0; myIndex < workerlist.size(); myIndex++) {
-						if (workerlist.get(myIndex) == this)
-							break;
+				try {
+					String next = names.getNext();
+					boolean result = watchUser(next);
+					if (myIndex == -1) {
+						for (myIndex = 0; myIndex < workerlist.size(); myIndex++) {
+							if (workerlist.get(myIndex) == this)
+								break;
+						}
 					}
+					bubblelist.add(new WatchBubble(next, myIndex, result));
+					//Thread.sleep(rand.nextInt(400) + 300); //pretend network delay
+					offset = 700;
+					this.firePropertyChange("progress", 0, names.getProgress());
+				} catch (Exception e) {
+					e.printStackTrace(); //this is just to catch any bullshit that might fall through
 				}
-				bubblelist.add(new WatchBubble(next, myIndex, result));
-				//Thread.sleep(rand.nextInt(400) + 300); //pretend network delay
-				offset = 700;
-				this.firePropertyChange("progress", 0, names.getProgress());
 			}
 			return null;
 		}
