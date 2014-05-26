@@ -105,6 +105,7 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
         this.setSize(400, 320);
         this.setLocation((screen.width-400)/2, (screen.height-320)/2);
         this.setUndecorated(true);
+        this.setIconImage(rsrc.getImg("watcher_head.png"));
         this.setResizable(false);
         this.setVisible(true);
         this.setDefaultCloseOperation(DISPOSE_ON_CLOSE);
@@ -208,7 +209,9 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 			}
 
 			if (!checkLogin()) {
+				//this will hang for a bit, regrettably
 				if (!doLogin()) {
+					updateStartButton();
 					JOptionPane.showMessageDialog(this, "Couldn't login :<");
 					return;
 				}
@@ -252,6 +255,10 @@ public class WatcherApp extends JFrame implements ActionListener, PropertyChange
 		}
 	}
 	
+	/**
+	 * This is the background thread that does all the stuff
+	 *
+	 */
 	class WatchTask extends SwingWorker<Void, Void> {
 		int offset = 0;
 		int myIndex = -1;
